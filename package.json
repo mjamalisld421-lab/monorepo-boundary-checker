@@ -11,13 +11,20 @@
   ],
   "scripts": {
     "build": "tsc",
-    "check": "tsc --noEmit"
+    "check": "npm run typecheck",
+    "test": "npm run build && node --test tests/*.test.mjs",
+    "typecheck": "tsc --noEmit"
   },
   "engines": {
     "node": ">=20"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
+    "@types/validate-npm-package-name": "^4.0.2",
     "typescript": "^5.9.0"
+  },
+  "dependencies": {
+    "fast-glob": "^3.3.3",
+    "validate-npm-package-name": "^5.0.1"
   }
 }
