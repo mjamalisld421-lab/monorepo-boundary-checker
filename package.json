@@ -1,0 +1,23 @@
+{
+  "name": "monorepo-boundary-checker",
+  "version": "0.0.0",
+  "description": "Enforce dependency boundaries between packages in JavaScript and TypeScript monorepos.",
+  "type": "module",
+  "bin": {
+    "monorepo-boundary-checker": "dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "check": "tsc --noEmit"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.0"
+  }
+}
