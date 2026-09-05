@@ -20,12 +20,12 @@
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
-    "@types/validate-npm-package-name": "^4.0.2",
-    "typescript": "^5.9.0"
+    "@types/validate-npm-package-name": "^4.0.2"
   },
   "dependencies": {
     "@babel/parser": "^7.29.8",
     "fast-glob": "^3.3.3",
+    "typescript": "^5.9.0",
     "validate-npm-package-name": "^5.0.1"
   }
 }

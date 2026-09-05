@@ -5,11 +5,14 @@ import validatePackageName from "validate-npm-package-name";
 
 import type { ImportReference, SourceFileScan } from "./scanner.js";
 import type { Workspace } from "./workspaces.js";
+import { aliasCandidates, createConfigLoader } from "./tsconfig.js";
 
 export type UnresolvedReason =
   | "no-source-workspace"
   | "missing-relative-target"
   | "unowned-relative-target"
+  | "alias-target-not-found"
+  | "unowned-alias-target"
   | "unsupported-specifier"
   | "ambiguous-workspace-name";
 
@@ -45,20 +48,29 @@ export function findOwningWorkspace(filePath: string, workspaces: readonly Works
 const extensions = [".js", ".jsx", ".ts", ".tsx"];
 
 /** Deliberate source-file probing, not Node/TypeScript module resolution:
- * exact file, appended extensions, then directory indexes. No main/exports,
- * extension substitution, aliases, URLs, or node_modules traversal. */
-async function relativeTarget(sourceFile: string, specifier: string): Promise<string | null> {
-  const base = path.resolve(path.dirname(sourceFile), specifier);
-  const candidates = [base, ...extensions.map((ext) => base + ext),
+ * exact file wins, then .js -> .ts/.tsx or .jsx -> .tsx substitution,
+ * appended .js/.jsx/.ts/.tsx, then indexes in that same order.
+ * No main/exports or node_modules traversal. Shared by relative/alias/baseUrl. */
+async function sourceTarget(base: string, localAlias = false): Promise<string | null> {
+  const extension = path.extname(base);
+  const substitutions = extension === ".js" ? [".ts", ".tsx"] : extension === ".jsx" ? [".tsx"] : [];
+  const candidates = [base, ...substitutions.map((ext) => base.slice(0, -extension.length) + ext),
+    ...extensions.map((ext) => base + ext),
     ...extensions.map((ext) => path.join(base, `index${ext}`))];
   for (const candidate of candidates) {
+    if (localAlias && (!extensions.includes(path.extname(candidate)) ||
+        candidate.split(path.sep).includes("node_modules"))) continue;
     try {
-      if ((await stat(candidate)).isFile()) return await realpath(candidate);
+      if ((await stat(candidate)).isFile()) {
+        const canonical = await realpath(candidate);
+        if (localAlias && canonical.split(path.sep).includes("node_modules")) continue;
+        return canonical;
+      }
     } catch (error) {
       if (error instanceof Error && "code" in error &&
           (error.code === "ENOENT" || error.code === "ENOTDIR")) continue;
       // Preserve unexpected I/O failures rather than disguise them as missing files.
-      throw new Error(`Unable to inspect relative import target: ${candidate}`, { cause: error });
+      throw new Error(`Unable to inspect source import target: ${candidate}`, { cause: error });
     }
   }
   return null;
@@ -77,6 +89,16 @@ export async function resolveImportReference(
   filePath: string,
   reference: ImportReference,
   workspaces: readonly Workspace[],
+  options: { rootDirectory?: string } = {},
+): Promise<ResolvedReference> {
+  return resolveReference(filePath, reference, workspaces, createConfigLoader(options.rootDirectory));
+}
+
+async function resolveReference(
+  filePath: string,
+  reference: ImportReference,
+  workspaces: readonly Workspace[],
+  loadConfig: ReturnType<typeof createConfigLoader>,
 ): Promise<ResolvedReference> {
   const sourceFile = path.resolve(filePath);
   const sourceWorkspace = findOwningWorkspace(sourceFile, workspaces);
@@ -85,6 +107,7 @@ export async function resolveImportReference(
     ...base, sourceWorkspace, targetWorkspace: null, classification: "unresolved", reason,
   });
   if (sourceWorkspace === null) return unresolved("no-source-workspace");
+  const config = await loadConfig(sourceWorkspace.root);
   const { specifier } = reference;
   if (isBuiltin(specifier)) {
     return { ...base, sourceWorkspace, targetWorkspace: null, classification: "builtin" };
@@ -95,19 +118,37 @@ export async function resolveImportReference(
     if (specifier.includes("?") || specifier.includes("#") || specifier.includes("\\")) {
       return unresolved("unsupported-specifier");
     }
-    const target = await relativeTarget(sourceFile, specifier);
+    const target = await sourceTarget(path.resolve(path.dirname(sourceFile), specifier));
     if (target === null) return unresolved("missing-relative-target");
     const owner = findOwningWorkspace(target, workspaces);
     if (owner === null) return unresolved("unowned-relative-target");
     targetWorkspace = owner;
   } else {
     const name = packageIdentity(specifier);
-    if (name === null) return unresolved("unsupported-specifier");
     const matches = workspaces.filter((workspace) => workspace.name === name);
     if (matches.length > 1) return unresolved("ambiguous-workspace-name");
     const match = matches[0];
-    if (!match) return { ...base, sourceWorkspace, targetWorkspace: null, classification: "external" };
-    targetWorkspace = match;
+    if (match) targetWorkspace = match;
+    else {
+      // Workspace identities and builtins cannot be redirected by tsconfig.
+      if (path.isAbsolute(specifier) || specifier.includes(":") || specifier.includes("\\") ||
+          specifier.includes("?")) return unresolved("unsupported-specifier");
+      const aliases = config ? aliasCandidates(specifier, config) : null;
+      const candidates = aliases ?? (config?.baseUrl && name !== null ? [path.resolve(config.baseUrl, specifier)] : []);
+      let target: string | null = null;
+      for (const candidate of candidates) {
+        target = await sourceTarget(candidate, true);
+        if (target !== null) break;
+      }
+      if (target === null) {
+        if (aliases !== null) return unresolved("alias-target-not-found");
+        if (name === null) return unresolved("unsupported-specifier");
+        return { ...base, sourceWorkspace, targetWorkspace: null, classification: "external" };
+      }
+      const owner = findOwningWorkspace(target, workspaces);
+      if (owner === null) return unresolved("unowned-alias-target");
+      targetWorkspace = owner;
+    }
   }
   return {
     ...base, sourceWorkspace, targetWorkspace,
@@ -118,11 +159,15 @@ export async function resolveImportReference(
 /** Preserve the caller's file order and every Stage 2 occurrence, including duplicates. */
 export async function resolveScans(
   scans: readonly SourceFileScan[], workspaces: readonly Workspace[],
+  options: { rootDirectory?: string } = {},
 ): Promise<ResolvedReference[]> {
+  const loadConfig = createConfigLoader(options.rootDirectory);
+  // Validate selected configs even when a workspace has no import occurrences.
+  for (const workspace of workspaces) await loadConfig(workspace.root);
   const results: ResolvedReference[] = [];
   for (const scan of scans) {
     for (const reference of scan.imports) {
-      results.push(await resolveImportReference(scan.filePath, reference, workspaces));
+      results.push(await resolveReference(scan.filePath, reference, workspaces, loadConfig));
     }
   }
   return results;

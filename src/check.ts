@@ -28,7 +28,7 @@ export async function runBoundaryCheck(options: {
   }
   const scans = [];
   for (const file of [...files].sort()) scans.push(await scanSourceFile(file));
-  const evaluations = evaluateBoundaries(await resolveScans(scans, workspaces), config);
+  const evaluations = evaluateBoundaries(await resolveScans(scans, workspaces, { rootDirectory }), config);
   const uncertain = evaluations.some((r) => r.relationship.classification === "unresolved");
   const failed = evaluations.some((r) => r.status === "violation" || r.status === "source-not-configured");
   return { rootDirectory, workspaceCount: workspaces.length, evaluations,

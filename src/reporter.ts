@@ -3,6 +3,7 @@ import type { BoundaryCheckResult } from "./check.js";
 import { BoundaryConfigError } from "./config.js";
 import { SourceScanError } from "./scanner.js";
 import { WorkspaceDiscoveryError } from "./workspaces.js";
+import { TypeScriptConfigError } from "./tsconfig.js";
 
 function relativeFile(root: string, file: string): string {
   return path.relative(root, file).split(path.sep).join("/") || ".";
@@ -55,7 +56,8 @@ export function formatCheckError(error: unknown, rootDirectory: string): string 
     const detail = error.cause instanceof Error ? error.cause.message : error.message;
     return `Source scan failed [${error.code}]: ${relativeFile(root, error.filePath)}\n  ${shorten(detail)}\n`;
   }
-  if (error instanceof BoundaryConfigError || error instanceof WorkspaceDiscoveryError) {
+  if (error instanceof BoundaryConfigError || error instanceof WorkspaceDiscoveryError ||
+      error instanceof TypeScriptConfigError) {
     return `Check failed [${error.code}]: ${shorten(error.message)}\n`;
   }
   return `Check failed: ${shorten(error instanceof Error ? error.message : String(error))}\n`;
