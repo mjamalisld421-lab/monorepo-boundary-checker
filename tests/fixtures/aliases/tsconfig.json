@@ -1,0 +1,14 @@
+{
+  // TypeScript JSONC and ordered paths are intentional fixture inputs.
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@alias/*": ["missing/*", "packages/shared/src/*"],
+      "@alias/specific/*": ["packages/ui/src/*"],
+      "@ui/*": ["apps/missing/*", "packages/ui/src/*"],
+      "@db/*": ["packages/database/src/*"],
+      "@domain/*": ["packages/domain/src/*"],
+      "@broken/*": ["missing/*"],
+    },
+  },
+}
