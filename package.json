@@ -1,8 +1,24 @@
 {
   "name": "monorepo-boundary-checker",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "description": "Enforce dependency boundaries between packages in JavaScript and TypeScript monorepos.",
   "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mjamalisld421-lab/monorepo-boundary-checker.git"
+  },
+  "bugs": {
+    "url": "https://github.com/mjamalisld421-lab/monorepo-boundary-checker/issues"
+  },
+  "homepage": "https://github.com/mjamalisld421-lab/monorepo-boundary-checker#readme",
+  "keywords": [
+    "monorepo",
+    "workspaces",
+    "architecture",
+    "dependency-boundaries",
+    "typescript"
+  ],
   "bin": {
     "monorepo-boundary-checker": "dist/cli.js"
   },
@@ -10,10 +26,12 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc",
+    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
+    "build": "npm run clean && tsc",
     "check": "npm run typecheck",
     "test": "npm run build && node --test tests/*.test.mjs",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prepack": "npm run build"
   },
   "engines": {
     "node": ">=20"

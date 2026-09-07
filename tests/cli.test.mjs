@@ -125,7 +125,7 @@ for (const absolute of [false, true]) {
   });
 }
 
-for (const args of [["--config"], ["--config", "--unknown"], ["--json"], ["--config", "x", "extra"]]) {
+for (const args of [["--config"], ["--config", "--unknown"], ["--config", "x", "extra"]]) {
   test(`invalid arguments ${args.join(" ")} return 2`, async (t) => {
     const result = execute(await fixture(t), args);
     assert.equal(result.status, 2);

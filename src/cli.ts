@@ -1,25 +1,41 @@
 #!/usr/bin/env node
 
 import { runBoundaryCheck } from "./check.js";
-import { formatCheckError, formatHumanReport } from "./reporter.js";
+import { formatCheckError, formatHumanReport, formatJsonError, formatJsonReport } from "./reporter.js";
+
+class CliArgumentError extends Error {
+  readonly code = "CLI_ARGUMENT_ERROR";
+}
 
 async function main(): Promise<void> {
   const rootDirectory = process.cwd();
+  const args = process.argv.slice(2);
+  const jsonRequested = args.includes("--json");
   try {
-    const args = process.argv.slice(2);
     let configPath: string | undefined;
-    if (args.length > 0) {
-      if (args[0] !== "--config") throw new Error(`Unknown argument: ${args[0]}`);
-      if (!args[1] || args[1].startsWith("--")) throw new Error("--config requires a file path.");
-      if (args.length > 2) throw new Error(`Unexpected argument: ${args[2]}`);
-      configPath = args[1];
+    let json = false;
+    for (let index = 0; index < args.length; index++) {
+      const argument = args[index];
+      if (argument === "--json") {
+        if (json) throw new CliArgumentError("Unexpected argument: --json");
+        json = true;
+      } else if (argument === "--config") {
+        const value = args[index + 1];
+        if (!value || value.startsWith("--")) throw new CliArgumentError("--config requires a file path.");
+        if (configPath !== undefined) throw new CliArgumentError("Unexpected argument: --config");
+        configPath = value;
+        index++;
+      } else {
+        throw new CliArgumentError(`Unknown argument: ${argument}`);
+      }
     }
     const result = await runBoundaryCheck({ rootDirectory,
       ...(configPath === undefined ? {} : { configPath }) });
-    process.stdout.write(formatHumanReport(result));
+    process.stdout.write(json ? formatJsonReport(result) : formatHumanReport(result));
     process.exitCode = result.exitCode;
   } catch (error) {
-    process.stderr.write(formatCheckError(error, rootDirectory));
+    if (jsonRequested) process.stdout.write(formatJsonError(error, rootDirectory));
+    else process.stderr.write(formatCheckError(error, rootDirectory));
     process.exitCode = 2;
   }
 }

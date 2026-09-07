@@ -191,7 +191,7 @@ for (const [label, mutate, code] of [
 
 test("invalid CLI arguments exit 2 without reading the fixture", async (t) => {
   const root = await copyFixture(t, "clean");
-  const result = executeCli(root, ["--json"]);
+  const result = executeCli(root, ["--unknown"]);
   assert.equal(result.status, 2);
   assert.match(result.stderr, /Unknown argument/);
 });
