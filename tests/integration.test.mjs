@@ -8,6 +8,10 @@ import { scanSourceTree } from "../dist/scanner.js";
 import { findOwningWorkspace } from "../dist/resolver.js";
 import { formatHumanReport } from "../dist/reporter.js";
 import { copyFixture, executeCli, linkFixtureRoot } from "./helpers/fixtures.mjs";
+import { createRequire } from 'module';
+
+var require = createRequire(import.meta.url);
+var module = { exports: {} };
 
 test("committed clean monorepo runs the full pipeline and built CLI", async (t) => {
   const root = await copyFixture(t, "clean");
