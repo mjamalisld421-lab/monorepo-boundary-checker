@@ -4,7 +4,7 @@ import path from "node:path";
 import test from "node:test";
 import { createJsonError, createJsonReport, formatJsonError, formatJsonReport } from "../dist/reporter.js";
 import { runBoundaryCheck } from "../dist/check.js";
-import { copyFixture, executeCli } from "./helpers/fixtures.mjs";
+import { copyFixture, executeCli, linkFixtureRoot } from "./helpers/fixtures.mjs";
 
 function executeJson(root, args = ["--json"]) {
   const result = executeCli(root, args);
@@ -46,6 +46,22 @@ test("violation JSON retains ordered details, reasons, and relative paths", asyn
       kind: "require", reason: "target-not-allowed" },
   ]);
   assert.ok(document.violations.every((entry) => !path.isAbsolute(entry.file) && !entry.file.includes("\\")));
+});
+
+test("JSON reporting stays project-relative through a symlinked root", async (t) => {
+  const physicalRoot = await copyFixture(t, "violations");
+  const linkedRoot = await linkFixtureRoot(t, physicalRoot);
+  if (linkedRoot === null) return;
+
+  const direct = createJsonReport(await runBoundaryCheck({ rootDirectory: linkedRoot }));
+  const { result, document } = executeJson(linkedRoot);
+
+  assert.equal(result.status, 1);
+  assert.deepEqual(document.violations, direct.violations);
+  assert.equal(document.violations[0].file, "packages/domain/src/service.ts");
+  assert.ok(document.violations.every((entry) => !entry.file.startsWith("../")));
+  assert.ok(!result.stdout.includes(physicalRoot));
+  assert.ok(!result.stdout.includes(linkedRoot));
 });
 
 test("source-not-configured has its own JSON collection and reason", async (t) => {

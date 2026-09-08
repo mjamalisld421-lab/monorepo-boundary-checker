@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { cp, mkdtemp, realpath, rm } from "node:fs/promises";
+import { cp, mkdtemp, realpath, rm, symlink } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
@@ -14,6 +14,20 @@ export async function copyFixture(t, name) {
   const root = path.join(parent, "repo");
   await cp(path.join(fixtures, name), root, { recursive: true });
   return root;
+}
+
+export async function linkFixtureRoot(t, root) {
+  const linkedRoot = path.join(path.dirname(root), "linked-repo");
+  try {
+    await symlink(root, linkedRoot, process.platform === "win32" ? "junction" : "dir");
+  } catch (error) {
+    if (error?.code === "EPERM" || error?.code === "EACCES" || error?.code === "ENOSYS") {
+      t.skip(`directory link unavailable: ${error.code}`);
+      return null;
+    }
+    throw error;
+  }
+  return linkedRoot;
 }
 
 export function executeCli(root, args = []) {

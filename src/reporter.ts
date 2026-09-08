@@ -1,3 +1,4 @@
+import { realpathSync } from "node:fs";
 import path from "node:path";
 import type { BoundaryCheckResult } from "./check.js";
 import { BoundaryConfigError } from "./config.js";
@@ -5,15 +6,43 @@ import { SourceScanError } from "./scanner.js";
 import { WorkspaceDiscoveryError } from "./workspaces.js";
 import { TypeScriptConfigError } from "./tsconfig.js";
 
+function canonicalPath(filePath: string): string {
+  const absolutePath = path.resolve(filePath);
+  try {
+    return realpathSync.native(absolutePath);
+  } catch {
+    return absolutePath;
+  }
+}
+
+function isContained(relativePath: string): boolean {
+  return relativePath === "" ||
+    (relativePath !== ".." && !relativePath.startsWith(`..${path.sep}`) &&
+      !path.isAbsolute(relativePath));
+}
+
 function relativeFile(root: string, file: string): string {
-  return path.relative(root, file).split(path.sep).join("/") || ".";
+  const absoluteRoot = path.resolve(root);
+  const absoluteFile = path.resolve(file);
+  const canonicalRoot = canonicalPath(absoluteRoot);
+  const lexicalRelative = path.relative(absoluteRoot, absoluteFile);
+  const fileFromCanonicalRoot = isContained(lexicalRelative)
+    ? path.resolve(canonicalRoot, lexicalRelative)
+    : absoluteFile;
+  const canonicalFile = canonicalPath(fileFromCanonicalRoot);
+  return path.relative(canonicalRoot, canonicalFile).split(path.sep).join("/") || ".";
 }
 
 function shortenMessage(rootDirectory: string, message: string): string {
-  const root = path.resolve(rootDirectory);
-  const normalizedRoot = root.split(path.sep).join("/");
-  return message.split(root + path.sep).join("").split(root + "/").join("")
-    .split(normalizedRoot + "/").join("");
+  const roots = new Set([path.resolve(rootDirectory), canonicalPath(rootDirectory)]);
+  let shortened = message;
+  for (const root of roots) {
+    const normalizedRoot = root.split(path.sep).join("/");
+    shortened = shortened.split(root + path.sep).join("")
+      .split(root + "/").join("")
+      .split(normalizedRoot + "/").join("");
+  }
+  return shortened;
 }
 
 export function formatHumanReport(result: BoundaryCheckResult): string {

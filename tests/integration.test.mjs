@@ -7,7 +7,7 @@ import { discoverWorkspaces } from "../dist/workspaces.js";
 import { scanSourceTree } from "../dist/scanner.js";
 import { findOwningWorkspace } from "../dist/resolver.js";
 import { formatHumanReport } from "../dist/reporter.js";
-import { copyFixture, executeCli } from "./helpers/fixtures.mjs";
+import { copyFixture, executeCli, linkFixtureRoot } from "./helpers/fixtures.mjs";
 
 test("committed clean monorepo runs the full pipeline and built CLI", async (t) => {
   const root = await copyFixture(t, "clean");
@@ -45,6 +45,23 @@ test("committed violation monorepo reports exactly two ordered violations", asyn
   assert.match(result.stdout, /require: @fixture\/domain/);
   assert.doesNotMatch(result.stdout, /react|node:fs|\.\/model/);
   assert.ok(!result.stdout.includes(root));
+});
+
+test("human reporting stays project-relative through a symlinked root", async (t) => {
+  const physicalRoot = await copyFixture(t, "violations");
+  const linkedRoot = await linkFixtureRoot(t, physicalRoot);
+  if (linkedRoot === null) return;
+
+  const check = await runBoundaryCheck({ rootDirectory: linkedRoot });
+  const report = formatHumanReport(check);
+  const cli = executeCli(linkedRoot);
+
+  assert.equal(cli.status, 1);
+  assert.equal(cli.stdout, report);
+  assert.match(report, /packages\/domain\/src\/service\.ts/);
+  assert.doesNotMatch(report, /\.\.\//);
+  assert.ok(!report.includes(physicalRoot));
+  assert.ok(!report.includes(linkedRoot));
 });
 
 test("committed alias monorepo exercises extends, fallbacks, ownership and exit-2 precedence", async (t) => {
