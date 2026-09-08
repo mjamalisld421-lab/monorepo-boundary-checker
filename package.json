@@ -42,7 +42,9 @@
   },
   "dependencies": {
     "@babel/parser": "^7.29.8",
+    "dotenv": "^8.2.0",
     "fast-glob": "^3.3.3",
+    "node-fetch": "^3.3.2",
     "typescript": "^5.9.0",
     "validate-npm-package-name": "^5.0.1"
   }
