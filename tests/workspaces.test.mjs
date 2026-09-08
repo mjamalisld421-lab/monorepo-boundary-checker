@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, realpath, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -55,6 +55,10 @@ test("discovers a single workspace pattern with package names and absolute paths
     },
     async (root) => {
       const workspaces = await discoverWorkspaces(root);
+      const expectedRoots = await Promise.all([
+        realpath(path.join(root, "packages/core")),
+        realpath(path.join(root, "packages/shared")),
+      ]);
 
       assert.deepEqual(
         workspaces.map(({ name }) => name),
@@ -62,11 +66,11 @@ test("discovers a single workspace pattern with package names and absolute paths
       );
       assert.deepEqual(
         workspaces.map(({ root: packageRoot }) => packageRoot),
-        [path.join(root, "packages/core"), path.join(root, "packages/shared")],
+        expectedRoots,
       );
       assert.equal(
         workspaces[0].packageJsonPath,
-        path.join(root, "packages/core/package.json"),
+        path.join(expectedRoots[0], "package.json"),
       );
       assert.ok(workspaces.every(({ root: packageRoot }) => path.isAbsolute(packageRoot)));
     },
