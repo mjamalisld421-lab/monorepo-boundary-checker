@@ -1,0 +1,1 @@
+{"boundaries":{"@fixture/web":["@fixture/ui","@fixture/shared"],"@fixture/ui":["@fixture/shared"],"@fixture/domain":["@fixture/shared"]}}
