@@ -38,6 +38,18 @@ async function usingFixture(rootManifest, workspaceManifests, run) {
   }
 }
 
+async function usingPnpmFixture(
+  pnpmWorkspaceContents,
+  workspaceManifests,
+  run,
+  rootManifest = { private: true },
+) {
+  await usingFixture(rootManifest, workspaceManifests, async (root) => {
+    await writeFile(path.join(root, "pnpm-workspace.yaml"), pnpmWorkspaceContents);
+    await run(root);
+  });
+}
+
 async function assertDiscoveryError(action, expectedCode) {
   await assert.rejects(action, (error) => {
     assert.ok(error instanceof WorkspaceDiscoveryError);
@@ -132,6 +144,117 @@ test("supports object-style workspace packages", async () => {
       assert.deepEqual(workspaces.map(({ name }) => name), ["api", "domain"]);
     },
   );
+});
+
+test("discovers pnpm workspaces with scoped names, canonical roots, and deterministic order", async () => {
+  await usingPnpmFixture(
+    `packages:\n  - "apps/*"\n  - "packages/*"\ncatalog:\n  react: ^19.0.0\nonlyBuiltDependencies:\n  - esbuild\n`,
+    {
+      "packages/shared": { name: "@example/shared" },
+      "apps/web": { name: "@example/web" },
+      "packages/ui": { name: "@example/ui" },
+    },
+    async (root) => {
+      const first = await discoverWorkspaces(root);
+      const second = await discoverWorkspaces(root);
+      const expectedRoots = await Promise.all([
+        realpath(path.join(root, "apps/web")),
+        realpath(path.join(root, "packages/shared")),
+        realpath(path.join(root, "packages/ui")),
+      ]);
+
+      assert.deepEqual(first, second);
+      assert.deepEqual(first.map(({ name }) => name), [
+        "@example/web",
+        "@example/shared",
+        "@example/ui",
+      ]);
+      assert.deepEqual(first.map(({ root: packageRoot }) => packageRoot), expectedRoots);
+      assert.deepEqual(
+        first.map(({ packageJsonPath }) => packageJsonPath),
+        expectedRoots.map((packageRoot) => path.join(packageRoot, "package.json")),
+      );
+    },
+  );
+});
+
+test("applies pnpm negative workspace patterns", async () => {
+  await usingPnpmFixture(
+    `packages:\n  - "packages/*"\n  - "!packages/ignored"\n`,
+    {
+      "packages/api": { name: "api" },
+      "packages/ignored": { name: "ignored" },
+      "packages/ui": { name: "ui" },
+    },
+    async (root) => {
+      const workspaces = await discoverWorkspaces(root);
+      assert.deepEqual(workspaces.map(({ name }) => name), ["api", "ui"]);
+    },
+  );
+});
+
+test("pnpm-workspace.yaml takes precedence over package.json workspaces", async () => {
+  await usingPnpmFixture(
+    `packages:\n  - "packages/*"\n`,
+    {
+      "apps/legacy": { name: "legacy" },
+      "packages/current": { name: "current" },
+    },
+    async (root) => {
+      const workspaces = await discoverWorkspaces(root);
+      assert.deepEqual(workspaces.map(({ name }) => name), ["current"]);
+    },
+    { private: true, workspaces: ["apps/*"] },
+  );
+});
+
+test("discovers nested pnpm workspaces without duplicate roots", async () => {
+  await usingPnpmFixture(
+    `packages:\n  - "packages/*"\n  - "packages/*/extensions/*"\n  - "packages/plugin/extensions/foo"\n`,
+    {
+      "packages/plugin": { name: "@example/plugin" },
+      "packages/plugin/extensions/foo": { name: "@example/foo" },
+    },
+    async (root) => {
+      const workspaces = await discoverWorkspaces(root);
+      assert.deepEqual(workspaces.map(({ name }) => name), ["@example/plugin", "@example/foo"]);
+      assert.equal(new Set(workspaces.map(({ root: packageRoot }) => packageRoot)).size, 2);
+    },
+  );
+});
+
+test("fails when pnpm-workspace.yaml contains malformed YAML", async () => {
+  await usingPnpmFixture("packages:\n  - [unterminated\n", {}, async (root) => {
+    await assertDiscoveryError(
+      () => discoverWorkspaces(root),
+      "PNPM_WORKSPACE_PARSE_ERROR",
+    );
+  });
+});
+
+test("fails when pnpm packages is not an array of non-empty strings", async () => {
+  for (const contents of [
+    `packages: "packages/*"\n`,
+    `packages:\n  - "packages/*"\n  - 123\n`,
+    `catalog:\n  react: ^19.0.0\n`,
+  ]) {
+    await usingPnpmFixture(contents, {}, async (root) => {
+      await assertDiscoveryError(
+        () => discoverWorkspaces(root),
+        "PNPM_WORKSPACE_INVALID",
+      );
+    });
+  }
+});
+
+test("reports an unreadable pnpm workspace configuration", async () => {
+  await usingFixture({ private: true }, {}, async (root) => {
+    await mkdir(path.join(root, "pnpm-workspace.yaml"));
+    await assertDiscoveryError(
+      () => discoverWorkspaces(root),
+      "PNPM_WORKSPACE_READ_ERROR",
+    );
+  });
 });
 
 test("fails when the root package.json is missing", async () => {

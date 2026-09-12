@@ -47,6 +47,40 @@ test("committed violation monorepo reports exactly two ordered violations", asyn
   assert.ok(!result.stdout.includes(root));
 });
 
+test("committed pnpm-only monorepo runs discovery through CLI reporting", async (t) => {
+  const root = await copyFixture(t, "pnpm");
+  const rootManifest = JSON.parse(await readFile(path.join(root, "package.json"), "utf8"));
+  assert.equal("workspaces" in rootManifest, false);
+
+  const workspaces = await discoverWorkspaces(root);
+  assert.deepEqual(workspaces.map(({ name }) => name), [
+    "@fixture/web",
+    "@fixture/shared",
+    "@fixture/ui",
+  ]);
+
+  const check = await runBoundaryCheck({ rootDirectory: root });
+  assert.equal(check.exitCode, 1);
+  assert.equal(check.workspaceCount, 3);
+  assert.deepEqual(
+    check.evaluations.map(({ relationship, status }) => [relationship.specifier, status]),
+    [
+      ["@fixture/ui", "allowed"],
+      ["@fixture/shared", "violation"],
+      ["@fixture/shared", "allowed"],
+    ],
+  );
+
+  const result = executeCli(root);
+  assert.equal(result.status, 1);
+  assert.equal(result.stderr, "");
+  assert.match(result.stdout, /@fixture\/web -> @fixture\/shared/);
+  assert.match(result.stdout, /apps\/web\/src\/page\.ts/);
+  assert.match(result.stdout, /Boundary violations: 1/);
+  assert.match(result.stdout, /Workspaces checked: 3/);
+  assert.ok(!result.stdout.includes(root));
+});
+
 test("human reporting stays project-relative through a symlinked root", async (t) => {
   const physicalRoot = await copyFixture(t, "violations");
   const linkedRoot = await linkFixtureRoot(t, physicalRoot);
