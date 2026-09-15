@@ -2,7 +2,7 @@
 
 `monorepo-boundary-checker` is a Node.js CLI that enforces explicit dependency boundaries between packages in npm, Yarn classic, and pnpm workspaces. It discovers workspace packages, scans JavaScript and TypeScript source syntax, resolves local relationships, and reports imports that violate the configured architecture.
 
-The package is available on [npm](https://www.npmjs.com/package/monorepo-boundary-checker). Install it as a development dependency:
+The current release is [monorepo-boundary-checker@1.1.0](https://www.npmjs.com/package/monorepo-boundary-checker/v/1.1.0). Install it as a development dependency:
 
 ```sh
 npm install --save-dev monorepo-boundary-checker
