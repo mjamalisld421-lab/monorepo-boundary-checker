@@ -1,8 +1,8 @@
 # monorepo-boundary-checker
 
-`monorepo-boundary-checker` is a Node.js CLI that enforces explicit dependency boundaries between packages in npm workspaces. It discovers workspace packages, scans JavaScript and TypeScript source syntax, resolves local relationships, and reports imports that violate the configured architecture.
+`monorepo-boundary-checker` is a Node.js CLI that enforces explicit dependency boundaries between packages in npm, Yarn classic, and pnpm workspaces. It discovers workspace packages, scans JavaScript and TypeScript source syntax, resolves local relationships, and reports imports that violate the configured architecture.
 
-The package is not published yet. After publication, install it as a development dependency:
+The package is available on [npm](https://www.npmjs.com/package/monorepo-boundary-checker). Install it as a development dependency:
 
 ```sh
 npm install --save-dev monorepo-boundary-checker
@@ -54,7 +54,9 @@ Each key must be the exact package name of a discovered workspace. Its value lis
 
 For example, the configuration above allows `@demo/domain` to import `@demo/shared`, but an import from `@demo/domain` to `@demo/database` is a `target-not-allowed` violation. Internal imports, external packages, and Node built-ins are not boundary violations.
 
-The root `package.json` may use either npm workspace form:
+### Supported workspace definitions
+
+npm and Yarn classic projects may use either `package.json` workspace form:
 
 ```json
 { "workspaces": ["apps/*", "packages/*"] }
@@ -63,6 +65,17 @@ The root `package.json` may use either npm workspace form:
 ```json
 { "workspaces": { "packages": ["apps/*", "packages/*"] } }
 ```
+
+pnpm projects may define workspaces in `pnpm-workspace.yaml`:
+
+```yaml
+packages:
+  - "apps/*"
+  - "packages/*"
+  - "!packages/internal-test"
+```
+
+Negative patterns exclude matching directories. If `pnpm-workspace.yaml` exists at the project root, its `packages` field is authoritative and the checker does not combine it with `package.json` workspaces.
 
 ## Exit codes
 
@@ -136,7 +149,7 @@ Workspace, source-file, import-occurrence, and report ordering is deterministic.
 - Static re-export declarations are not scanned as import references.
 - Full Node package `exports` and conditional resolution are not implemented.
 - Bundler-specific aliases and arbitrary custom resolvers are not supported.
-- Yarn PnP and package-manager virtual-store resolution are not included.
+- Yarn PnP and pnpm virtual-store dependency resolution are not included. pnpm workspace metadata discovery is supported.
 - Nx, Turborepo, and ESLint plugins are not included.
 - Circular dependency detection and vulnerability scanning are outside this tool's scope.
 

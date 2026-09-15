@@ -3,6 +3,7 @@ import path from "node:path";
 
 import fastGlob from "fast-glob";
 import validatePackageName from "validate-npm-package-name";
+import { parse as parseYaml } from "yaml";
 
 export type Workspace = {
   name: string;
@@ -15,6 +16,9 @@ export type WorkspaceDiscoveryErrorCode =
   | "INVALID_ROOT_PACKAGE_JSON"
   | "MISSING_WORKSPACES"
   | "INVALID_WORKSPACES"
+  | "PNPM_WORKSPACE_READ_ERROR"
+  | "PNPM_WORKSPACE_PARSE_ERROR"
+  | "PNPM_WORKSPACE_INVALID"
   | "WORKSPACE_PATTERN_ERROR"
   | "WORKSPACE_PACKAGE_JSON_NOT_FOUND"
   | "INVALID_WORKSPACE_PACKAGE_JSON"
@@ -124,6 +128,71 @@ function getWorkspacePatterns(rootManifest: JsonObject): string[] {
   return patterns;
 }
 
+type WorkspacePatternSource = {
+  patterns: string[];
+  path: string;
+};
+
+async function getPnpmWorkspacePatterns(
+  pnpmWorkspacePath: string,
+): Promise<string[] | null> {
+  let contents: string;
+
+  try {
+    contents = await readFile(pnpmWorkspacePath, "utf8");
+  } catch (error) {
+    if (isNodeError(error) && error.code === "ENOENT") return null;
+
+    throw new WorkspaceDiscoveryError(
+      "PNPM_WORKSPACE_READ_ERROR",
+      `Unable to read pnpm workspace configuration: ${pnpmWorkspacePath}`,
+      error,
+    );
+  }
+
+  let document: unknown;
+
+  try {
+    document = parseYaml(contents.replace(/^\uFEFF/, ""));
+  } catch (error) {
+    throw new WorkspaceDiscoveryError(
+      "PNPM_WORKSPACE_PARSE_ERROR",
+      `pnpm workspace configuration contains invalid YAML: ${pnpmWorkspacePath}`,
+      error,
+    );
+  }
+
+  const packages = isJsonObject(document) ? document.packages : undefined;
+  if (
+    !Array.isArray(packages) ||
+    packages.some(
+      (pattern): boolean => typeof pattern !== "string" || pattern.trim().length === 0,
+    )
+  ) {
+    throw new WorkspaceDiscoveryError(
+      "PNPM_WORKSPACE_INVALID",
+      `pnpm workspace configuration must contain a packages array of non-empty strings: ${pnpmWorkspacePath}`,
+    );
+  }
+
+  return packages;
+}
+
+async function getWorkspacePatternSource(
+  absoluteRoot: string,
+  rootManifest: JsonObject,
+): Promise<WorkspacePatternSource> {
+  const pnpmWorkspacePath = path.join(absoluteRoot, "pnpm-workspace.yaml");
+  const pnpmPatterns = await getPnpmWorkspacePatterns(pnpmWorkspacePath);
+
+  if (pnpmPatterns !== null) {
+    return { patterns: pnpmPatterns, path: pnpmWorkspacePath };
+  }
+
+  const rootPackageJsonPath = path.join(absoluteRoot, "package.json");
+  return { patterns: getWorkspacePatterns(rootManifest), path: rootPackageJsonPath };
+}
+
 function comparePaths(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
 }
@@ -136,12 +205,12 @@ export async function discoverWorkspaces(rootDirectory: string): Promise<Workspa
   const absoluteRoot = path.resolve(rootDirectory);
   const rootPackageJsonPath = path.join(absoluteRoot, "package.json");
   const rootManifest = await readManifest(rootPackageJsonPath, "root");
-  const patterns = getWorkspacePatterns(rootManifest);
+  const patternSource = await getWorkspacePatternSource(absoluteRoot, rootManifest);
 
   let matchedDirectories: string[];
 
   try {
-    matchedDirectories = await fastGlob(patterns, {
+    matchedDirectories = await fastGlob(patternSource.patterns, {
       absolute: true,
       cwd: absoluteRoot,
       dot: true,
@@ -153,7 +222,7 @@ export async function discoverWorkspaces(rootDirectory: string): Promise<Workspa
   } catch (error) {
     throw new WorkspaceDiscoveryError(
       "WORKSPACE_PATTERN_ERROR",
-      `Unable to resolve workspace patterns from: ${rootPackageJsonPath}`,
+      `Unable to resolve workspace patterns from: ${patternSource.path}`,
       error,
     );
   }
